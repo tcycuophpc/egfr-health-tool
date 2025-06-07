@@ -10,10 +10,8 @@ from sklearn.linear_model import LinearRegression
 USER_DATA_FILE = "user_data.json"
 os.makedirs("charts", exist_ok=True)
 
-# 首圖
 st.image("護理系圖檔.png", caption="中國醫藥大學護理學系 (School of Nursing, CMU)", use_container_width=True)
 
-# 資料處理
 def load_user_data():
     if os.path.exists(USER_DATA_FILE):
         with open(USER_DATA_FILE, "r") as f:
@@ -24,7 +22,6 @@ def save_user_data(data):
     with open(USER_DATA_FILE, "w") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-# 登入流程
 def user_login():
     st.title("健康評估登入系統")
     id_last4 = st.text_input("身分證後四碼")
@@ -47,7 +44,6 @@ def user_login():
         else:
             st.warning("請正確輸入共 8 碼")
 
-# 登入判斷
 if "user_id" not in st.session_state:
     user_login()
     st.stop()
@@ -56,7 +52,6 @@ user_id = st.session_state["user_id"]
 is_admin = st.session_state.get("is_admin", False)
 user_data = load_user_data()
 
-# 管理者頁面
 if is_admin:
     st.title("📊 管理者總覽頁面")
     all_records = []
@@ -76,11 +71,6 @@ if is_admin:
         egrp = df_all.pivot_table(index="date", values="egfr", aggfunc="mean")
         st.line_chart(egrp)
 
-        st.subheader("依生活習慣分析")
-        for habit in ["smoking", "drinking", "chewing", "drugs"]:
-            if habit in df_all.columns:
-                st.bar_chart(df_all.groupby(habit)["egfr"].mean())
-
         st.subheader("依衰弱指數風險")
         if "frail" in df_all.columns:
             st.bar_chart(df_all.groupby("frail")["egfr"].mean())
@@ -89,31 +79,11 @@ if is_admin:
         df_sorted = df_all.sort_values("date")
         df_sorted["predicted_egfr"] = df_sorted["egfr"].ewm(span=2).mean()
         st.line_chart(df_sorted[["egfr", "predicted_egfr"]].tail(10))
-
-        st.subheader("衰弱趨勢圖 (FRAIL 分數)")
-        frail_trend = df_sorted[df_sorted["user_id"] == user_id].tail(5)
-        if not frail_trend.empty:
-            fig, ax = plt.subplots()
-            ax.plot(frail_trend["date"], frail_trend["frail"], marker='o', linestyle='-')
-            ax.set_title("近五筆 FRAIL 衰弱趨勢")
-            ax.set_ylabel("衰弱分數")
-            ax.set_xlabel("日期")
-            ax.grid(True)
-            st.pyplot(fig)
-
-        df_user = df_sorted[df_sorted["user_id"] == user_id]
-        if len(df_user) >= 2:
-            df_user = df_user.reset_index(drop=True)
-            X = np.arange(len(df_user)).reshape(-1, 1)
-            y = df_user["egfr"].values
-            model = LinearRegression().fit(X, y)
-            prediction = model.predict([[len(df_user)]])[0]
-            st.metric("預測下一次 eGFR 值", f"{prediction:.2f} ml/min/1.73m²")
     else:
         st.info("目前無使用者紀錄")
     st.stop()
 
-# 使用者介面
+# 使用者頁面
 st.title("🩺 使用者健康評估系統")
 
 name = st.text_input("姓名")
@@ -127,70 +97,39 @@ sbp = st.slider("收縮壓 SBP", 80, 200)
 dbp = st.slider("舒張壓 DBP", 40, 130)
 egfr = st.number_input("eGFR(ml/min/1.73m²)", 1.0, 120.0)
 
-# 生活習慣
-st.subheader("生活習慣")
-smoking = st.selectbox("是否抽菸", ["否", "偶爾", "每天"])
-drinking = st.selectbox("是否喝酒", ["否", "偶爾", "經常"])
-chewing = st.selectbox("是否嚼檳榔", ["否", "偶爾", "經常"])
-drugs = st.selectbox("是否有藥物濫用", ["否", "曾經", "正在使用"])
-meds = st.selectbox("是否規律服藥或使用保健品", ["否", "是"])
+st.subheader("生活習慣（數值輸入）")
+smoking_freq = st.slider("每日抽菸支數", 0, 40, step=1)
+drinking_freq = st.slider("每週飲酒次數", 0, 14, step=1)
+chewing_freq = st.slider("每日嚼檳榔次數", 0, 20, step=1)
+drug_freq = st.slider("每月藥物濫用次數", 0, 30, step=1)
+supp_freq = st.slider("每日保健品使用次數", 0, 10, step=1)
 
-# FRAIL
+st.subheader("是否有慢性病史")
+chronic_illnesses = st.multiselect(
+    "請勾選您曾罹患的慢性病",
+    ["糖尿病", "高血壓", "中風", "其他"]
+)
+chronic_count = len(chronic_illnesses)
+
 st.subheader("FRAIL 衰弱指標")
 f = st.radio("Fatigue 疲憊感", ["是", "否"])
 r = st.radio("Resistance 肌力減弱", ["是", "否"])
 a = st.radio("Ambulation 行走困難", ["是", "否"])
 i = st.radio("Illnesses 慢性病多於5種", ["是", "否"])
 l = st.radio("Loss of weight 體重下降", ["是", "否"])
-
 frail_score = [f, r, a, i, l].count("是")
 frail_status = "健壯" if frail_score == 0 else "前衰弱" if frail_score in [1, 2] else "衰弱"
 st.write(f"FRAIL 總分：{frail_score}，目前狀態：{frail_status}")
 
-# 健康建議
-st.subheader("健康建議")
-feedback = []
-
-if egfr >= 90:
-    feedback.append("✅ eGFR 正常，請持續良好生活習慣。")
-elif egfr >= 60:
-    feedback.append("⚠️ eGFR 輕度下降，建議減少高鹽高蛋白食物並多喝水。")
-elif egfr >= 30:
-    feedback.append("🔶 eGFR 明顯下降，建議就醫腎臟科： [點此預約](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
-else:
-    feedback.append("🚨 eGFR 嚴重異常，應立即就醫，請洽腎臟科門診。")
-
-if frail_status != "健壯":
-    feedback.append(f"🔍 屬於 {frail_status} 狀態，建議加強營養與運動。")
-if bmi >= 27:
-    feedback.append("⚠️ BMI 偏高，建議飲食控制與運動。")
-elif bmi < 18.5:
-    feedback.append("⚠️ BMI 偏低，請注意營養攝取。")
-if sbp >= 140 or dbp >= 90:
-    feedback.append("🔺 血壓偏高，建議監測與諮詢醫師。")
-elif sbp <= 90 or dbp <= 60:
-    feedback.append("🔻 血壓偏低，請觀察是否頭暈或疲勞。")
-if smoking != "否":
-    feedback.append("🚭 建議戒菸，保護心肺與腎功能。")
-if drinking != "否":
-    feedback.append("🍷 請節制飲酒，保護肝腎健康。")
-if chewing != "否":
-    feedback.append("⚠️ 嚼檳榔有致癌風險，請儘快戒除。")
-if drugs != "否":
-    feedback.append("❌ 藥物濫用危害重大，應尋求協助。")
-if meds == "是":
-    feedback.append("📌 使用保健品應與醫師確認，避免交互作用。")
-
-for item in feedback:
-    st.info(item)
-
-# 儲存按鈕
 if st.button("儲存紀錄"):
     today = datetime.date.today().isoformat()
     record = {
         "date": today, "egfr": egfr, "sbp": sbp, "dbp": dbp, "bmi": bmi,
-        "frail": frail_score, "frail_status": frail_status, "smoking": smoking,
-        "drinking": drinking, "chewing": chewing, "drugs": drugs, "meds": meds
+        "frail": frail_score, "frail_status": frail_status,
+        "smoking_freq": smoking_freq, "drinking_freq": drinking_freq,
+        "chewing_freq": chewing_freq, "drug_freq": drug_freq,
+        "supp_freq": supp_freq, "chronic_count": chronic_count,
+        "chronic_illnesses": chronic_illnesses
     }
     records = user_data[user_id].get("records", [])
     records.append(record)
@@ -198,12 +137,11 @@ if st.button("儲存紀錄"):
     save_user_data(user_data)
     st.success("✅ 紀錄已儲存")
 
-# 使用者資料圖表與預測
 records = user_data[user_id].get("records", [])
 if records:
     df = pd.DataFrame(records)
     df["date"] = pd.to_datetime(df["date"])
-    st.subheader("📈 個人 eGFR 趨勢預測")
+    st.subheader("📈 eGFR 趨勢預測")
     df = df.sort_values("date")
     df["predicted_egfr"] = df["egfr"].ewm(span=2).mean()
     st.line_chart(df[["egfr", "predicted_egfr"]].tail(10))
@@ -212,19 +150,15 @@ if records:
         df = df.reset_index(drop=True)
         X = np.arange(len(df)).reshape(-1, 1)
         y = df["egfr"].values
-        model = LinearRegression().fit(X, y)
-        next_pred = model.predict([[len(df)]])[0]
-        st.metric("下一次預測 eGFR", f"{next_pred:.2f} ml/min/1.73m²")
-
-    st.subheader("📊 衰弱趨勢圖")
-    fig, ax = plt.subplots()
-    ax.plot(df["date"], df["frail"], marker='o', linestyle='-')
-    ax.set_title("FRAIL 分數趨勢")
-    ax.set_ylabel("分數")
-    ax.set_xlabel("日期")
-    ax.grid(True)
-    st.pyplot(fig)
+        extra_features = np.array([[
+            smoking_freq, drinking_freq, chewing_freq,
+            drug_freq, supp_freq, chronic_count
+        ]])
+        full_X = np.hstack([X, np.tile(extra_features, (len(X), 1))])
+        model = LinearRegression().fit(full_X, y)
+        next_input = np.array([[len(df), *extra_features.flatten()]])
+        next_pred = model.predict(next_input)[0]
+        st.metric("綜合預測下一次 eGFR", f"{next_pred:.2f} ml/min/1.73m²")
 
     st.subheader("📄 最近五筆紀錄")
     st.dataframe(df.tail(5))
-

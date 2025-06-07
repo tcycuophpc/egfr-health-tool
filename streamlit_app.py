@@ -5,13 +5,16 @@ import json
 import os
 import datetime
 import numpy as np
-from autogluon.tabular import TabularPredictor
+from sklearn.ensemble import GradientBoostingRegressor
+import joblib
 
 USER_DATA_FILE = "user_data.json"
+MODEL_FILE = "egfr_model.pkl"
+
 os.makedirs("charts", exist_ok=True)
 
 try:
-    predictor = TabularPredictor.load("egfr_predictor/")
+    predictor = joblib.load(MODEL_FILE)
 except:
     predictor = None
 
@@ -46,7 +49,8 @@ def user_login():
 if "user_id" not in st.session_state:
     user_login()
     st.stop()
-    user_id = st.session_state["user_id"]
+
+user_id = st.session_state["user_id"]
 is_admin = st.session_state.get("is_admin", False)
 user_data = load_user_data()
 
@@ -120,7 +124,8 @@ if st.button("儲存紀錄"):
     user_data[user_id]["records"] = records[-10:]
     save_user_data(user_data)
     st.success("✅ 紀錄已儲存")
-    records = user_data[user_id].get("records", [])
+
+records = user_data[user_id].get("records", [])
 if records:
     df = pd.DataFrame(records)
     df["date"] = pd.to_datetime(df["date"])
@@ -141,7 +146,7 @@ if records:
         }
         sample_df = pd.DataFrame([sample])
         auto_pred = predictor.predict(sample_df)[0]
-        st.metric("AutoML 預測 eGFR", f"{auto_pred:.2f} ml/min/1.73m²")
+        st.metric("預測 eGFR", f"{auto_pred:.2f} ml/min/1.73m²")
 
         st.subheader("📌 健康衛教與掛號建議")
 

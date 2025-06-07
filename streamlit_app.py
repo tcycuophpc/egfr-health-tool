@@ -16,18 +16,16 @@ def calculate_egfr(age, creatinine, sex):
     egfr = 141 * min(creatinine / k, 1) ** a * max(creatinine / k, 1) ** -1.209 * 0.993 ** age * gender_factor
     return egfr
 
-# eGFR標準值對應衰弱狀況
-def egfr_frailty_status(egfr):
+# eGFR 衰弱狀況判斷
+def egfr_frailty_level(egfr):
     if egfr >= 90:
-        return "正常腎功能"
+        return "正常"
     elif 60 <= egfr < 90:
-        return "輕度腎功能下降"
-    elif 45 <= egfr < 60:
-        return "中度腎功能下降"
-    elif 30 <= egfr < 45:
-        return "中重度腎功能下降"
+        return "輕度下降"
+    elif 30 <= egfr < 60:
+        return "中度下降"
     else:
-        return "重度腎功能下降"
+        return "重度下降"
 
 # 預估衰弱分數
 def frailty_score(inputs):
@@ -56,20 +54,6 @@ def frailty_level(score):
 # 檢查是否為整數或半整數
 def is_int_or_half(num):
     return (num * 2) == int(num * 2)
-
-def outpatient_advice(egfr):
-    st.subheader("🏥 門診建議")
-    hospital_link = "[中國醫藥大學附設醫院台中總院掛號系統](https://www.cmuh.cmu.edu.tw/registration)"
-    if egfr >= 90:
-        st.info(f"eGFR 正常，建議每年做一次健康檢查。如有慢性病，請遵照醫師指示定期追蹤。{hospital_link}")
-    elif 60 <= egfr < 90:
-        st.warning(f"eGFR 輕度下降，建議半年至一年內就診一次，評估腎功能變化及生活調整。{hospital_link}")
-    elif 45 <= egfr < 60:
-        st.warning(f"eGFR 中度下降，建議3至6個月追蹤腎功能，並與醫師討論治療方案。{hospital_link}")
-    elif 30 <= egfr < 45:
-        st.error(f"eGFR 中重度下降，需積極門診追蹤，腎臟科醫師可能會介入治療。{hospital_link}")
-    else:
-        st.error(f"eGFR 重度下降，需密切門診追蹤，評估是否需要透析或腎臟移植準備。{hospital_link}")
 
 def main():
     st.set_page_config(page_title="整合性健康評估工具", page_icon="🩺")
@@ -120,7 +104,6 @@ def main():
 
         bmi = weight / (height / 100) ** 2
         egfr = calculate_egfr(age, creatinine, sex)
-        egfr_status = egfr_frailty_status(egfr)
         score = frailty_score({
             'grip_strength': grip_strength,
             'slow_walk': slow_walk,
@@ -129,6 +112,7 @@ def main():
             'activity_level': activity_level,
         })
         frail_status = frailty_level(score)
+        egfr_status = egfr_frailty_level(egfr)
 
         lifestyle_risk_score = (
             int(drinking != "不喝") +
@@ -166,60 +150,77 @@ def main():
             '生活習慣指數': 1 - lifestyle_risk_score / 6
         }
 
-        df = pd.DataFrame({"項目": list(ideal_values.keys()), "理想值": list(ideal_values.values()), "實際值": list(actual_values.values())})
-        fig, ax = plt.subplots(figsize=(10, 5))
-        sns.lineplot(data=df, x="項目", y="理想值", label="理想值", marker="o", linewidth=2, color="green")
-        sns.lineplot(data=df, x="項目", y="實際值", label="實際值", marker="o", linewidth=2, color="blue")
+        df = pd.DataFrame({
+            "項目": list(ideal_values.keys()),
+            "理想值": list(ideal_values.values()),
+            "實際值": list(actual_values.values())
+        })
+
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.lineplot(data=df, x="項目", y="理想值", label="理想值", marker="o", linewidth=2, color="green", ax=ax)
+        sns.lineplot(data=df, x="項目", y="實際值", label="實際值", marker="o", linewidth=2, color="blue", ax=ax)
+
+        # 標示點數值
         for i in range(len(df)):
-            ax.text(i, df["實際值"][i], f'{df["實際值"][i]:.1f}', ha='center', va='bottom', fontsize=8)
-        plt.title("健康指標折線圖")
-        plt.xlabel("健康項目")
-        plt.ylabel("指數 / 數值")
+            ax.text(i, df["理想值"][i], f'{df["理想值"][i]:.1f}', ha='center', va='bottom', fontsize=9, color="green")
+            ax.text(i, df["實際值"][i], f'{df["實際值"][i]:.1f}', ha='center', va='top', fontsize=9, color="blue")
+
+        ax.set_xlabel("健康項目", fontsize=12)
+        ax.set_ylabel("指數/數值", fontsize=12)
+        ax.set_title("健康指標折線圖", fontsize=15)
+        ax.legend()
+        ax.grid(True)
         plt.xticks(rotation=45)
-        plt.legend()
         plt.tight_layout()
         st.pyplot(fig)
 
-        st.subheader("📌 建議就醫科別")
+        st.subheader("📌 建議就醫科別與掛號")
         if egfr < 60:
             st.write("👉 建議就診：腎臟內科")
+            st.markdown("[點此掛號中國醫藥大學附設醫院腎臟內科](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
         if sbp >= 140 or dbp >= 90:
             st.write("👉 建議就診：心臟內科")
+            st.markdown("[點此掛號中國醫藥大學附設醫院心臟內科](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
         if bmi >= 27 or bmi < 18.5:
             st.write("👉 建議就診：新陳代謝科或營養師諮詢")
+            st.markdown("[點此掛號中國醫藥大學附設醫院新陳代謝科](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
         if frail_status == "衰弱":
             st.write("👉 建議就診：老年醫學科或復健科")
+            st.markdown("[點此掛號中國醫藥大學附設醫院老年醫學科](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
         if drug_use == "目前有":
             st.write("👉 建議就診：精神科或藥癮治療中心")
+            st.markdown("[點此掛號中國醫藥大學附設醫院精神科](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
         if smoking == "目前仍抽" or betel_nut != "否":
             st.write("👉 建議就診：戒菸門診、口腔外科或耳鼻喉科")
+            st.markdown("[點此掛號中國醫藥大學附設醫院戒菸門診](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
 
-        # 衛教建議
         st.subheader("📚 衛教建議")
+
         if drinking != "不喝":
-            st.info("💡 建議減少飲酒，過量飲酒可能導致肝臟疾病、高血壓、心律不整及多種癌症。")
+            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/No_alcohol.svg/1200px-No_alcohol.svg.png", width=150)
+            st.markdown("💡 **建議減少飲酒**，過量飲酒可能導致肝臟疾病、高血壓、心律不整及多種癌症。")
+
         if smoking == "目前仍抽":
-            st.info("💡 建議戒菸，吸菸會大幅增加肺癌、口腔癌、心血管疾病、中風及慢性阻塞性肺病的風險。")
+            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/No_smoking_symbol.svg/1200px-No_smoking_symbol.svg.png", width=150)
+            st.markdown("💡 **建議戒菸**，吸菸會大幅增加肺癌、口腔癌、心血管疾病、中風及慢性阻塞性肺病的風險。")
+
         if betel_nut != "否":
-            st.info("💡 嚼檳榔與口腔癌、牙周病及消化系統疾病高度相關，應考慮戒除。")
+            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/0/0a/No_chewing_betel_nut_sign.svg/1200px-No_chewing_betel_nut_sign.svg.png", width=150)
+            st.markdown("💡 **嚼檳榔與口腔癌、牙周病及消化系統疾病高度相關，應考慮戒除。**")
+
         if drug_use == "目前有":
-            st.info("💡 藥物濫用可能引發神經、肝腎、心理及社會功能受損，建議尋求戒治資源如毒品危害防制中心。")
+            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/No_drugs_symbol.svg/1200px-No_drugs_symbol.svg.png", width=150)
+            st.markdown("💡 **藥物濫用可能引發神經、肝腎、心理及社會功能問題，建議尋求專業協助。**")
+
         if stress >= 7:
-            st.info("💡 長期壓力會影響免疫系統、腸胃及心血管健康，建議透過冥想、運動、心理諮詢紓壓。")
-        if sleep_hours < 5:
-            st.info("💡 睡眠不足會影響記憶力、免疫力與代謝功能，建議每天至少睡 6 小時。")
-        elif sleep_hours > 10:
-            st.info("💡 睡眠過多與抑鬱症、代謝症候群有關，建議維持每日 6–9 小時的規律睡眠。")
+            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/17/Stress_icon.svg/1024px-Stress_icon.svg.png", width=150)
+            st.markdown("💡 **高壓力狀態可能導致心身疾病，建議學習放鬆技巧及適當休息。**")
 
-        if bmi < 18.5:
-            st.info("💡 體重過輕可能導致營養不良、免疫力下降與骨質疏鬆，建議補充營養與諮詢營養師。")
-        elif bmi >= 24 and bmi < 27:
-            st.info("💡 屬於體重過重範圍，建議增加活動量、調整飲食以控制體重。")
-        elif bmi >= 27:
-            st.info("💡 體重過高會增加代謝症候群、心血管疾病與糖尿病風險，建議進行體重控制與諮詢營養師。")
+        if sleep_hours < 6 or sleep_hours > 9:
+            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/6/65/Sleep_icon.svg/1024px-Sleep_icon.svg.png", width=150)
+            st.markdown("💡 **睡眠不足或過多皆可能影響免疫與代謝功能，建議維持7-8小時良好睡眠。**")
 
-        # 門診建議
-        outpatient_advice(egfr)
+        st.info("💡 維持適當體重、均衡飲食及規律運動，有助於提升整體健康與預防慢性病。")
 
 if __name__ == "__main__":
     main()

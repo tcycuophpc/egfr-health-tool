@@ -16,17 +16,6 @@ def calculate_egfr(age, creatinine, sex):
     egfr = 141 * min(creatinine / k, 1) ** a * max(creatinine / k, 1) ** -1.209 * 0.993 ** age * gender_factor
     return egfr
 
-# eGFR 衰弱狀況判斷
-def egfr_frailty_level(egfr):
-    if egfr >= 90:
-        return "正常"
-    elif 60 <= egfr < 90:
-        return "輕度下降"
-    elif 30 <= egfr < 60:
-        return "中度下降"
-    else:
-        return "重度下降"
-
 # 預估衰弱分數
 def frailty_score(inputs):
     score = 0
@@ -50,6 +39,19 @@ def frailty_level(score):
         return "前衰弱"
     else:
         return "衰弱"
+
+# 根據 eGFR 判斷腎功能狀態與衰弱風險
+def egfr_status(egfr):
+    if egfr >= 90:
+        return "正常腎功能", 0
+    elif 60 <= egfr < 90:
+        return "輕度腎功能減退", 1
+    elif 30 <= egfr < 60:
+        return "中度腎功能減退", 2
+    elif 15 <= egfr < 30:
+        return "重度腎功能減退", 3
+    else:
+        return "末期腎病", 4
 
 # 檢查是否為整數或半整數
 def is_int_or_half(num):
@@ -112,7 +114,7 @@ def main():
             'activity_level': activity_level,
         })
         frail_status = frailty_level(score)
-        egfr_status = egfr_frailty_level(egfr)
+        egfr_state, egfr_frailty_score = egfr_status(egfr)
 
         lifestyle_risk_score = (
             int(drinking != "不喝") +
@@ -123,104 +125,122 @@ def main():
             int(sleep_hours < 5 or sleep_hours > 10)
         )
 
+        total_frailty_score = score + egfr_frailty_score
+
         st.header("📊 分析結果")
-        st.metric("eGFR (ml/min/1.73m²)", f"{egfr:.1f} ({egfr_status})")
+        st.metric("eGFR (ml/min/1.73m²)", f"{egfr:.1f} ({egfr_state})")
         st.metric("BMI (kg/m²)", f"{bmi:.1f}")
-        st.metric("衰弱評估", f"{frail_status}（分數：{score}）")
+        st.metric("衰弱評估", f"{frail_status}（Fried Criteria分數：{score}）")
+        st.metric("eGFR 腎功能衰弱風險分數", f"{egfr_frailty_score} / 4")
         st.metric("生活習慣風險分數", f"{lifestyle_risk_score} / 6")
+        st.metric("綜合衰弱風險分數", f"{total_frailty_score} / 10")
 
         st.subheader("📉 健康狀態折線圖（與理想值比較）")
         ideal_values = {
+            '年齡': 65,
             'BMI': 22,
-            'SBP': 120,
-            'DBP': 80,
+            '收縮壓 (SBP)': 120,
+            '舒張壓 (DBP)': 80,
             'eGFR': 90,
-            '睡眠時間': 7.5,
-            '衰弱指數': 0,
-            '生活習慣指數': 1
+            '壓力': 3,
+            '睡眠 (小時)': 7.5,
         }
-
         actual_values = {
+            '年齡': age,
             'BMI': bmi,
-            'SBP': sbp,
-            'DBP': dbp,
+            '收縮壓 (SBP)': sbp,
+            '舒張壓 (DBP)': dbp,
             'eGFR': egfr,
-            '睡眠時間': sleep_hours,
-            '衰弱指數': score / 5,
-            '生活習慣指數': 1 - lifestyle_risk_score / 6
+            '壓力': stress,
+            '睡眠 (小時)': sleep_hours,
         }
 
-        df = pd.DataFrame({
-            "項目": list(ideal_values.keys()),
-            "理想值": list(ideal_values.values()),
-            "實際值": list(actual_values.values())
+        df_plot = pd.DataFrame({
+            '指標': list(ideal_values.keys()) * 2,
+            '類型': ['理想值'] * len(ideal_values) + ['實際值'] * len(actual_values),
+            '數值': list(ideal_values.values()) + list(actual_values.values())
         })
 
-        fig, ax = plt.subplots(figsize=(10, 6))
-        sns.lineplot(data=df, x="項目", y="理想值", label="理想值", marker="o", linewidth=2, color="green", ax=ax)
-        sns.lineplot(data=df, x="項目", y="實際值", label="實際值", marker="o", linewidth=2, color="blue", ax=ax)
+        plt.figure(figsize=(12, 6))
+        sns.lineplot(data=df_plot, x='指標', y='數值', hue='類型', marker='o', palette=['green', 'red'])
+        plt.title("健康指標折線圖")
+        plt.xlabel("健康指標")
+        plt.ylabel("數值")
+        plt.grid(True)
+        for i, row in df_plot.iterrows():
+            plt.text(i % len(ideal_values), row['數值'], f"{row['數值']:.1f}", ha='center', va='bottom' if row['類型']=='實際值' else 'top')
+        st.pyplot(plt)
 
-        # 標示點數值
-        for i in range(len(df)):
-            ax.text(i, df["理想值"][i], f'{df["理想值"][i]:.1f}', ha='center', va='bottom', fontsize=9, color="green")
-            ax.text(i, df["實際值"][i], f'{df["實際值"][i]:.1f}', ha='center', va='top', fontsize=9, color="blue")
-
-        ax.set_xlabel("健康項目", fontsize=12)
-        ax.set_ylabel("指數/數值", fontsize=12)
-        ax.set_title("健康指標折線圖", fontsize=15)
-        ax.legend()
-        ax.grid(True)
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        st.pyplot(fig)
-
-        st.subheader("📌 建議就醫科別與掛號")
+        st.subheader("📌 建議就醫科別與掛號連結（中國醫藥大學附設醫院台中總院）")
         if egfr < 60:
-            st.write("👉 建議就診：腎臟內科")
-            st.markdown("[點此掛號中國醫藥大學附設醫院腎臟內科](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
+            st.markdown("- 腎臟內科 [掛號連結](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
         if sbp >= 140 or dbp >= 90:
-            st.write("👉 建議就診：心臟內科")
-            st.markdown("[點此掛號中國醫藥大學附設醫院心臟內科](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
+            st.markdown("- 心臟內科 [掛號連結](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
         if bmi >= 27 or bmi < 18.5:
-            st.write("👉 建議就診：新陳代謝科或營養師諮詢")
-            st.markdown("[點此掛號中國醫藥大學附設醫院新陳代謝科](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
+            st.markdown("- 新陳代謝科或營養師諮詢 [掛號連結](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
         if frail_status == "衰弱":
-            st.write("👉 建議就診：老年醫學科或復健科")
-            st.markdown("[點此掛號中國醫藥大學附設醫院老年醫學科](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
+            st.markdown("- 老年醫學科或復健科 [掛號連結](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
         if drug_use == "目前有":
-            st.write("👉 建議就診：精神科或藥癮治療中心")
-            st.markdown("[點此掛號中國醫藥大學附設醫院精神科](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
+            st.markdown("- 精神科或藥癮治療中心 [掛號連結](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
         if smoking == "目前仍抽" or betel_nut != "否":
-            st.write("👉 建議就診：戒菸門診、口腔外科或耳鼻喉科")
-            st.markdown("[點此掛號中國醫藥大學附設醫院戒菸門診](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
+            st.markdown("- 戒菸門診、口腔外科或耳鼻喉科 [掛號連結](https://www.cmuh.cmu.edu.tw/service/onlineappointment)")
 
         st.subheader("📚 衛教建議")
+        # eGFR 衛教
+        if egfr >= 90:
+            st.info("💡 您的腎功能正常，建議維持均衡飲食及適當運動，避免過量攝取高蛋白及鹽分。參考衛福部建議：健康腎臟，從生活做起。")
+        elif 60 <= egfr < 90:
+            st.warning("⚠️ 輕度腎功能減退，建議定期監測腎功能，避免使用對腎臟有害的藥物。衛福部提醒：早期發現，防止惡化。")
+        elif 30 <= egfr < 60:
+            st.error("❗ 中度腎功能減退，需嚴格控管血壓及血糖，並遵醫囑使用藥物。衛福部建議：慢性腎臟病患者應積極治療以延緩進展。")
+        elif 15 <= egfr < 30:
+            st.error("❗ 重度腎功能減退，建議積極就醫並遵從醫師指示進行治療。衛福部指出：重度腎臟病患者應考慮透析或其他療法。")
+        else:
+            st.error("❗ 末期腎病，請立即就醫。衛福部提醒：末期腎臟病需專業治療以維持生命。")
 
-        if drinking != "不喝":
-            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/3/3a/No_alcohol.svg/1200px-No_alcohol.svg.png", width=150)
-            st.markdown("💡 **建議減少飲酒**，過量飲酒可能導致肝臟疾病、高血壓、心律不整及多種癌症。")
+        # BMI 衛教
+        if bmi < 18.5:
+            st.info("💡 體重過輕可能導致免疫力下降與骨質疏鬆，建議補充營養並諮詢營養師。衛福部建議：均衡飲食、適度運動。")
+        elif 18.5 <= bmi < 24:
+            st.info("💡 體重正常，請持續保持健康生活習慣。衛福部建議：維持適當飲食與規律運動。")
+        elif 24 <= bmi < 27:
+            st.warning("⚠️ 體重過重，建議調整飲食與增加活動量。衛福部提醒：控制體重，預防代謝疾病。")
+        else:
+            st.error("❗ 肥胖，增加糖尿病與心血管疾病風險，請積極控制體重。衛福部建議：多運動、低熱量飲食。")
 
-        if smoking == "目前仍抽":
-            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/5/56/No_smoking_symbol.svg/1200px-No_smoking_symbol.svg.png", width=150)
-            st.markdown("💡 **建議戒菸**，吸菸會大幅增加肺癌、口腔癌、心血管疾病、中風及慢性阻塞性肺病的風險。")
+        # 血壓衛教
+        if sbp < 120 and dbp < 80:
+            st.info("💡 血壓正常，請持續良好生活習慣。衛福部建議：避免吸菸、均衡飲食。")
+        elif 120 <= sbp < 140 or 80 <= dbp < 90:
+            st.warning("⚠️ 血壓偏高，建議減少鹽分攝取與增加運動。衛福部提醒：控制血壓，預防心血管疾病。")
+        else:
+            st.error("❗ 高血壓，需遵照醫囑服藥並調整生活型態。衛福部建議：規律用藥、定期監測血壓。")
 
-        if betel_nut != "否":
-            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/0/0a/No_chewing_betel_nut_sign.svg/1200px-No_chewing_betel_nut_sign.svg.png", width=150)
-            st.markdown("💡 **嚼檳榔與口腔癌、牙周病及消化系統疾病高度相關，應考慮戒除。**")
+        # 壓力衛教
+        if stress <= 3:
+            st.info("💡 壓力適中，建議維持良好壓力管理。衛福部建議：充足休息與適度放鬆。")
+        elif 4 <= stress <= 6:
+            st.warning("⚠️ 壓力較大，建議嘗試運動與正念練習。衛福部提醒：壓力管理有助健康。")
+        else:
+            st.error("❗ 壓力過大，建議尋求心理諮詢或專業協助。衛福部建議：及早介入，避免憂鬱焦慮。")
 
-        if drug_use == "目前有":
-            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e3/No_drugs_symbol.svg/1200px-No_drugs_symbol.svg.png", width=150)
-            st.markdown("💡 **藥物濫用可能引發神經、肝腎、心理及社會功能問題，建議尋求專業協助。**")
+        # 睡眠衛教
+        if 6 <= sleep_hours <= 8:
+            st.info("💡 睡眠充足，有助身體恢復。衛福部建議：保持規律作息。")
+        elif sleep_hours < 6:
+            st.warning("⚠️ 睡眠不足，可能影響身心健康。衛福部提醒：避免熬夜，創造良好睡眠環境。")
+        else:
+            st.warning("⚠️ 睡眠過多，可能反映健康問題。衛福部建議：如持續睡眠過多請就醫評估。")
 
-        if stress >= 7:
-            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/1/17/Stress_icon.svg/1024px-Stress_icon.svg.png", width=150)
-            st.markdown("💡 **高壓力狀態可能導致心身疾病，建議學習放鬆技巧及適當休息。**")
+        # 衰弱狀況衛教
+        if frail_status == "無衰弱":
+            st.info("💡 您目前無明顯衰弱跡象，請持續維持健康生活習慣。衛福部建議：多運動、多攝取蛋白質。")
+        elif frail_status == "前衰弱":
+            st.warning("⚠️ 您有部分衰弱徵兆，建議增加肌力訓練與營養攝取。衛福部提醒：早期介入可預防進一步惡化。")
+        else:
+            st.error("❗ 您有明顯衰弱，建議尋求醫療及復健團隊協助。衛福部建議：積極治療與持續追蹤。")
 
-        if sleep_hours < 6 or sleep_hours > 9:
-            st.image("https://upload.wikimedia.org/wikipedia/commons/thumb/6/65/Sleep_icon.svg/1024px-Sleep_icon.svg.png", width=150)
-            st.markdown("💡 **睡眠不足或過多皆可能影響免疫與代謝功能，建議維持7-8小時良好睡眠。**")
-
-        st.info("💡 維持適當體重、均衡飲食及規律運動，有助於提升整體健康與預防慢性病。")
+        st.info("更多資訊請參考衛福部網站：https://www.mohw.gov.tw/")
 
 if __name__ == "__main__":
     main()

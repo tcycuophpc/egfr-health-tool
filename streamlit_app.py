@@ -5,22 +5,21 @@ import json
 import os
 import datetime
 import numpy as np
-from sklearn.linear_model import LinearRegression
+from autogluon.tabular import TabularPredictor
 
 USER_DATA_FILE = "user_data.json"
 os.makedirs("charts", exist_ok=True)
 
-st.image("護理系圖檔.png", caption="中國醫藥大學護理學系 (School of Nursing, CMU)", use_container_width=True)
+try:
+    predictor = TabularPredictor.load("egfr_predictor/")
+except:
+    predictor = None
 
 def load_user_data():
-    if os.path.exists(USER_DATA_FILE):
-        with open(USER_DATA_FILE, "r") as f:
-            return json.load(f)
-    return {}
+    return json.load(open(USER_DATA_FILE)) if os.path.exists(USER_DATA_FILE) else {}
 
 def save_user_data(data):
-    with open(USER_DATA_FILE, "w") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    json.dump(data, open(USER_DATA_FILE, "w"), indent=2, ensure_ascii=False)
 
 def user_login():
     st.title("健康評估登入系統")
@@ -47,8 +46,7 @@ def user_login():
 if "user_id" not in st.session_state:
     user_login()
     st.stop()
-
-user_id = st.session_state["user_id"]
+    user_id = st.session_state["user_id"]
 is_admin = st.session_state.get("is_admin", False)
 user_data = load_user_data()
 
@@ -72,7 +70,7 @@ if is_admin:
         st.info("目前無使用者紀錄")
     st.stop()
 
-# 使用者頁面
+# 使用者頁面開始
 st.title("🩺 使用者健康評估系統")
 
 name = st.text_input("姓名")
@@ -104,7 +102,7 @@ a = st.radio("Ambulation 行走困難", ["是", "否"])
 i = st.radio("Illnesses 慢性病多於5種", ["是", "否"])
 l = st.radio("Loss of weight 體重下降", ["是", "否"])
 frail_score = [f, r, a, i, l].count("是")
-frail_status = "健壯" if frail_score == 0 else "前衰弱" if frail_score in [1,2] else "衰弱"
+frail_status = "健壯" if frail_score == 0 else "前衰弱" if frail_score in [1, 2] else "衰弱"
 st.write(f"FRAIL 總分：{frail_score}，目前狀態：{frail_status}")
 
 if st.button("儲存紀錄"):
@@ -122,78 +120,82 @@ if st.button("儲存紀錄"):
     user_data[user_id]["records"] = records[-10:]
     save_user_data(user_data)
     st.success("✅ 紀錄已儲存")
-
-records = user_data[user_id].get("records", [])
+    records = user_data[user_id].get("records", [])
 if records:
     df = pd.DataFrame(records)
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date")
     df["predicted_egfr"] = df["egfr"].ewm(span=2).mean()
 
-    st.subheader("📈 eGFR 與預測")
+    st.subheader("📈 eGFR 趨勢圖")
     st.line_chart(df[["egfr", "predicted_egfr"]].tail(10))
 
-    if len(df) >= 2:
-        df = df.reset_index(drop=True)
-        X = np.arange(len(df)).reshape(-1, 1)
-        y = df["egfr"].values
-        extra = np.array([[smoking_freq, drinking_freq, chewing_freq, drug_freq, supp_freq, chronic_count]])
-        X_all = np.hstack([X, np.tile(extra, (len(X), 1))])
-        model = LinearRegression().fit(X_all, y)
-        next_input = np.array([[len(df), *extra.flatten()]])
-        next_pred = model.predict(next_input)[0]
-        st.metric("預測下一次 eGFR", f"{next_pred:.2f} ml/min/1.73m²")
+    if predictor:
+        sample = {
+            "smoking_freq": smoking_freq,
+            "drinking_freq": drinking_freq,
+            "chewing_freq": chewing_freq,
+            "drug_freq": drug_freq,
+            "supp_freq": supp_freq,
+            "chronic_count": chronic_count
+        }
+        sample_df = pd.DataFrame([sample])
+        auto_pred = predictor.predict(sample_df)[0]
+        st.metric("AutoML 預測 eGFR", f"{auto_pred:.2f} ml/min/1.73m²")
 
         st.subheader("📌 健康衛教與掛號建議")
 
-        if egfr < 60 or next_pred < 60:
-            st.warning("🔶 腎功能低下：eGFR 小於 60，建議盡速就醫")
+        if egfr < 60 or auto_pred < 60:
+            st.warning("🔶 腎功能低下：eGFR 小於 60")
             st.markdown("""
-            - **eGFR 是腎功能的重要指標**，當值低於 60 代表腎臟過濾功能下降。
-            - 常見原因包括：高血壓、糖尿病、慢性腎炎。
-            - 應定期檢驗腎功能、尿蛋白、控制血壓與血糖。
-            """)
-            st.markdown("[➡ 前往腎臟科掛號](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
+- 腎臟負責清除體內毒素，eGFR 小於 60 表示腎功能下降。
+- 請減少高鹽、高蛋白飲食，避免腎毒性藥物。
+- 建議至腎臟科進行尿液檢查與飲食評估。
+[➡ 前往腎臟科預約](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)
+""")
 
         if "糖尿病" in chronic_illnesses:
-            st.info("📌 糖尿病建議：")
+            st.info("📌 糖尿病與腎病變關聯")
             st.markdown("""
-            - 控制血糖以防腎病與視網膜病變。
-            - 定期檢查尿蛋白與眼底。
-            """)
-            st.markdown("[➡ 新陳代謝科掛號](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30300A&flag=first)")
+- 長期高血糖會破壞腎絲球，導致糖尿病腎病變。
+- 每年至少檢查腎功能與眼底一次。
+- 建議控制 A1C < 7%、少糖飲食。
+[➡ 新陳代謝科掛號](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30300A&flag=first)
+""")
 
         if "高血壓" in chronic_illnesses:
-            st.info("📌 高血壓建議：")
+            st.info("📌 高血壓衛教")
             st.markdown("""
-            - 控制收縮壓 <130 mmHg 可延緩腎病。
-            - 飲食減鹽、增加運動。
-            """)
-            st.markdown("[➡ 心臟內科掛號](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30100A&flag=first)")
+- 高血壓是腎臟與心血管疾病的主要危險因子。
+- 飲食減鹽、維持血壓 <130/80 mmHg。
+[➡ 心臟內科掛號](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30100A&flag=first)
+""")
 
         if "中風" in chronic_illnesses:
-            st.info("📌 中風後照護：")
+            st.info("📌 中風患者注意")
             st.markdown("""
-            - 避免再次中風，應控制血壓血脂。
-            - 加強復健與腦部影像追蹤。
-            """)
-            st.markdown("[➡ 神經內科掛號](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30900A&flag=first)")
-
-        if smoking_freq > 5 or drinking_freq > 3 or chewing_freq > 3:
-            st.info("🚭 高風險行為提醒：")
-            st.markdown("""
-            - 吸菸與嚼檳榔為口腔癌高風險。
-            - 過量飲酒可能傷肝傷腎。
-            """)
-            st.markdown("[➡ 家庭醫學科健康諮詢](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=31300A&flag=first)")
+- 須預防再次中風與相關併發症。
+- 建議服藥規律、控制三高。
+[➡ 神經內科掛號](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30900A&flag=first)
+""")
 
         if frail_score > 2:
-            st.info("🏃‍♂️ 衰弱狀態：")
+            st.info("🏃‍♂️ 衰弱改善建議")
             st.markdown("""
-            - 建議高蛋白營養補充與肌力運動。
-            - 可接受社區復健訓練或營養指導。
-            """)
-            st.markdown("[➡ 復健科掛號](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=31700A&flag=first)")
+- 補充蛋白質、維生素 D，避免體重下降。
+- 參與運動班或復健活動。
+[➡ 復健科掛號](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=31700A&flag=first)
+""")
+
+        if smoking_freq > 5 or drinking_freq > 3 or chewing_freq > 3 or drug_freq > 0:
+            st.info("🚭 高風險生活習慣")
+            st.markdown("""
+- 抽菸：易造成心肺與腎臟負擔。
+- 飲酒：長期傷肝腎，增加中風機率。
+- 嚼檳榔：高風險致癌，應儘快戒除。
+- 藥物濫用：傷害神經、肝腎，需專業戒治。
+[➡ 家庭醫學科衛教與戒除輔導](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=31300A&flag=first)
+""")
 
     st.subheader("📄 最近五筆紀錄")
     st.dataframe(df.tail(5))

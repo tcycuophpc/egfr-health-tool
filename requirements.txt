@@ -2,4 +2,4 @@ streamlit
 pandas
 matplotlib
 scikit-learn
-numpy
+autogluon==0.8.2

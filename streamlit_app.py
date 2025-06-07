@@ -78,6 +78,12 @@ if is_admin:
             st.bar_chart(df_all.groupby("drinking")["egfr"].mean())
         if "smoking" in df_all.columns:
             st.bar_chart(df_all.groupby("smoking")["egfr"].mean())
+
+        st.subheader("依衰弱指數風險")
+        if "frail" in df_all.columns:
+            frail_avg = df_all.groupby("frail")["egfr"].mean()
+            st.bar_chart(frail_avg)
+
     else:
         st.info("目前無使用者紀錄")
     st.stop()
@@ -138,7 +144,7 @@ if st.button("提交並儲存記錄"):
     chart_path = os.path.join(CHART_DIR, f"{user_id}_chart.png")
     fig, ax = plt.subplots()
     df.tail(5).plot(x="date", y=["egfr", "bmi", "sleep", "body_fat"], ax=ax, marker="o")
-    plt.title("健康指標趨勢圖")
+    plt.title("健康指標趨勢圖（近五筆資料）")
     plt.xticks(rotation=45)
     plt.tight_layout()
     plt.savefig(chart_path)
@@ -156,9 +162,10 @@ if st.button("提交並儲存記錄"):
         st.error("eGFR 嚴重下降，請立即就醫處理。")
         st.markdown("🚨 [緊急掛號 - 腎臟專科](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
 
-    if bmi >= 27:
-        st.warning("您的 BMI 顯示體重過重，建議控制體重以降低高血壓、糖尿病與腎病風險。")
-        st.markdown("👉 [預約體重控制門診](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
-    elif bmi < 18.5:
-        st.info("您的 BMI 偏低，建議檢視營養攝取並尋求醫師建議。")
-        st.markdown("👉 [預約營養門診](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
+    if frail_score >= 3:
+        st.error("衰弱風險高，建議定期運動、增加蛋白質攝取，並諮詢老年醫學科醫師。")
+        st.markdown("👉 [老年醫學門診](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
+    elif frail_score in [1, 2]:
+        st.warning("有前衰弱風險，建議多活動、保持營養均衡。")
+    else:
+        st.info("您目前無衰弱風險，請持續保持良好生活習慣。")

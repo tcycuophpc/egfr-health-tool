@@ -12,7 +12,7 @@ USER_DATA_FILE = "user_data.json"
 CHART_DIR = "charts"
 os.makedirs(CHART_DIR, exist_ok=True)
 
-st.image("護理系圖檔.png", caption="中國醫藥大學護理學系 (School of Nursing, CMU)", use_column_width=True)
+st.image("護理系圖檔.png", caption="中國醫藥大學護理學系 (School of Nursing, CMU)", use_container_width=True)
 
 def load_user_data():
     if os.path.exists(USER_DATA_FILE):

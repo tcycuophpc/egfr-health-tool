@@ -84,100 +84,124 @@ if is_admin:
             frail_avg = df_all.groupby("frail")["egfr"].mean()
             st.bar_chart(frail_avg)
 
+        st.subheader("eGFR 預測分析")
+        if len(df_all) >= 2:
+            df_sorted = df_all.sort_values("date")
+            df_sorted["predicted_egfr"] = df_sorted["egfr"].ewm(span=2).mean()
+            st.line_chart(df_sorted[["egfr", "predicted_egfr"]].tail(10))
+
+            # 新增折線圖分析：近五筆資料的衰弱趨勢
+            st.subheader("衰弱趨勢圖 (FRAIL 分數)")
+            frail_trend = df_sorted[df_sorted["user_id"] == user_id].tail(5)
+            if not frail_trend.empty:
+                fig, ax = plt.subplots()
+                ax.plot(frail_trend["date"], frail_trend["frail"], marker='o', linestyle='-')
+                ax.set_title("近五筆 FRAIL 衰弱趨勢")
+                ax.set_ylabel("衰弱分數")
+                ax.set_xlabel("日期")
+                ax.grid(True)
+                st.pyplot(fig)
+
     else:
         st.info("目前無使用者紀錄")
     st.stop()
 
-st.title("🔍 健康評估問卷填寫")
-now = datetime.datetime.now().strftime("%Y-%m-%d")
+# 使用者頁面
+st.title("使用者健康評估")
+name = st.text_input("姓名")
+age = st.number_input("年齡", 1, 120)
+height = st.number_input("身高 (cm)", 100.0, 250.0)
+weight = st.number_input("體重 (kg)", 30.0, 200.0)
 
-col1, col2 = st.columns(2)
-age = col1.number_input("年齡", min_value=1, max_value=120, value=25)
-height = col1.number_input("身高 (cm)", min_value=100, max_value=250, value=170)
-weight = col1.number_input("體重 (kg)", min_value=30, max_value=200, value=70)
-bp = col1.text_input("血壓 (如 120/80)")
-bmi = round(weight / ((height/100)**2), 1)
+bmi = round(weight / ((height / 100) ** 2), 1)
+st.metric("BMI 指數", bmi)
 
-sleep_hours = col2.slider("平均睡眠時數 (小時)", 0, 15, 7)
-egfr = col2.number_input("eGFR (mL/min/1.73㎡)", min_value=0.0, max_value=150.0, value=85.0)
+sbp = st.slider("收縮壓 SBP", 80, 200)
+dbp = st.slider("舒張壓 DBP", 40, 130)
 
-st.subheader("簡易衰弱測驗")
-f = st.radio("是否經常感到疲憊？", ["是", "否"], horizontal=True)
-r = st.radio("近半年體重是否無故下降？", ["是", "否"], horizontal=True)
-a = st.radio("是否難以走完一段距離（如 400 公尺）？", ["是", "否"], horizontal=True)
-i = st.radio("是否無法提起重物 (如米袋、購物袋)？", ["是", "否"], horizontal=True)
-l = st.radio("是否有跌倒經驗？", ["是", "否"], horizontal=True)
-frail_score = [f, r, a, i, l].count("是")
+egfr = st.number_input("eGFR(ml/min/1.73m²)", 1.0, 120.0)
 
 st.subheader("生活習慣")
-drinking = st.selectbox("飲酒頻率", ["不喝", "偶爾", "經常"])
-smoking = st.selectbox("是否抽菸", ["不抽", "已戒菸", "目前仍抽"])
-betel = st.selectbox("是否嚼檳榔", ["否", "是"])
-drug = st.selectbox("是否有藥物濫用經驗", ["否", "目前有"])
-supplement = st.radio("是否規律使用保健食品/中藥？", ["是", "否"], horizontal=True)
+smoking = st.selectbox("是否抽菸", ["否", "偶爾", "每天"])
+drinking = st.selectbox("是否喝酒", ["否", "偶爾", "經常"])
+chewing = st.selectbox("是否嚼檳榔", ["否", "偶爾", "經常"])
+drugs = st.selectbox("是否有藥物濫用", ["否", "曾經", "正在使用"])
+meds = st.selectbox("是否規律服藥或使用保健品", ["否", "是"])
 
-if st.button("提交並儲存記錄"):
-    rec = {
-        "date": now,
-        "age": age,
-        "height": height,
-        "weight": weight,
-        "bmi": bmi,
-        "bp": bp,
-        "sleep": sleep_hours,
-        "egfr": egfr,
-        "frail": frail_score,
-        "drinking": drinking,
-        "smoking": smoking,
-        "betel": betel,
-        "drug": drug,
-        "supplement": supplement
+st.subheader("FRAIL 衰弱指標")
+f = st.radio("Fatigue 疲憊感", ["是", "否"])
+r = st.radio("Resistance 肌力減弱", ["是", "否"])
+a = st.radio("Ambulation 行走困難", ["是", "否"])
+i = st.radio("Illnesses 慢性病多於5種", ["是", "否"])
+l = st.radio("Loss of weight 體重下降", ["是", "否"])
+
+frail_score = [f, r, a, i, l].count("是")
+frail_status = "健壯" if frail_score == 0 else "前衰弱" if frail_score in [1,2] else "衰弱"
+
+st.write(f"FRAIL 總分：{frail_score}，目前狀態：{frail_status}")
+
+feedback = []
+if egfr >= 90:
+    feedback.append("eGFR 正常，請持續良好生活習慣。")
+elif egfr >= 60:
+    feedback.append("eGFR 輕度下降，建議減少高鹽高蛋白食物並多喝水。")
+elif egfr >= 30:
+    feedback.append("eGFR 明顯下降，請掛號腎臟科門診： [腎臟科預約](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
+else:
+    feedback.append("eGFR 嚴重異常，應立即就醫，建議立即轉診腎臟科。")
+
+if frail_status != "健壯":
+    feedback.append(f"目前屬於 {frail_status}，請加強飲食與運動，提升身體功能。")
+
+if bmi >= 27:
+    feedback.append("BMI 偏高，可能增加慢性病風險，建議調整飲食與運動。")
+elif bmi < 18.5:
+    feedback.append("BMI 偏低，請確認營養攝取是否足夠。")
+
+if sbp >= 140 or dbp >= 90:
+    feedback.append("血壓偏高，建議定期量測與控制，必要時諮詢醫師。")
+elif sbp <= 90 or dbp <= 60:
+    feedback.append("血壓偏低，注意是否有頭暈、疲勞等症狀。")
+
+if smoking != "否":
+    feedback.append("抽菸會加重腎臟與心肺負擔，建議戒菸。")
+if drinking != "否":
+    feedback.append("飲酒過量會影響肝腎功能，建議節制飲酒。")
+if chewing != "否":
+    feedback.append("檳榔為一級致癌物，應儘快戒除。")
+if drugs != "否":
+    feedback.append("藥物濫用對健康危害極大，應立即尋求協助。")
+if meds == "是":
+    feedback.append("使用保健品或藥物時應與醫師確認，以避免交互作用。")
+
+st.subheader("健康建議")
+for item in feedback:
+    st.info(item)
+
+if st.button("儲存紀錄"):
+    today = datetime.date.today().isoformat()
+    record = {
+        "date": today, "egfr": egfr, "sbp": sbp, "dbp": dbp, "bmi": bmi,
+        "frail": frail_score, "frail_status": frail_status, "smoking": smoking,
+        "drinking": drinking, "chewing": chewing, "drugs": drugs, "meds": meds
     }
-    user_data = load_user_data()
-    user_data[user_id]["records"].append(rec)
+    records = user_data[user_id].get("records", [])
+    records.append(record)
+    user_data[user_id]["records"] = records[-10:]
     save_user_data(user_data)
-    st.success("已儲存")
+    st.success("紀錄已儲存")
 
+if user_data[user_id].get("records"):
     df = pd.DataFrame(user_data[user_id]["records"])
-    chart_path = os.path.join(CHART_DIR, f"{user_id}_chart.png")
-    fig, ax = plt.subplots()
-    df.tail(5).plot(x="date", y=["egfr", "bmi", "sleep"], ax=ax, marker="o")
-    plt.title("健康指標趨勢圖（近五筆資料）")
-    plt.xticks(rotation=45)
-    plt.tight_layout()
-    plt.savefig(chart_path)
-    st.image(chart_path)
+    st.subheader("📈 近五次健康趨勢圖")
+    if len(df) >= 2:
+        fig, ax = plt.subplots(figsize=(8,5))
+        df_plot = df.set_index("date")
+        df_plot[["egfr", "bmi"]].plot(ax=ax)
+        ax.set_title("eGFR 與 BMI 變化")
+        ax.set_ylabel("數值")
+        ax.grid(True)
+        st.pyplot(fig)
 
-    st.subheader("健康建議")
-    if egfr >= 90:
-        st.success("eGFR 正常，建議每年定期追蹤腎功能並維持良好生活習慣。")
-    elif 60 <= egfr < 90:
-        st.warning("eGFR 有輕度下降，建議增加水分攝取並避免高鹽高蛋白飲食。")
-    elif 30 <= egfr < 60:
-        st.error("eGFR 明顯下降，建議盡快轉診腎臟科門診評估。")
-        st.markdown("👉 [預約腎臟科門診](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
-    else:
-        st.error("eGFR 嚴重下降，請立即就醫處理。")
-        st.markdown("🚨 [緊急掛號 - 腎臟專科](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
-
-    if frail_score >= 3:
-        st.error(f"衰弱評分：{frail_score}，屬於高度衰弱風險，建議定期運動、增加蛋白質攝取，並諮詢老年醫學科醫師。")
-        st.markdown("👉 [老年醫學門診](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
-    elif frail_score in [1, 2]:
-        st.warning(f"衰弱評分：{frail_score}，有前衰弱風險，建議多活動、保持營養均衡。")
-    else:
-        st.info(f"衰弱評分：{frail_score}，無衰弱風險，請持續保持良好生活習慣。")
-
-    if "/" in bp:
-        try:
-            sbp, dbp = map(int, bp.split("/"))
-            if sbp >= 140 or dbp >= 90:
-                st.warning("血壓偏高，建議減少鹽分攝取、規律運動並監測血壓。")
-            elif sbp <= 90 or dbp <= 60:
-                st.warning("血壓偏低，若有頭暈虛弱建議就醫評估是否低血壓。")
-            else:
-                st.info("血壓在正常範圍，請持續保持。")
-        except:
-            st.error("血壓格式錯誤，請輸入如 120/80 的格式。")
-    else:
-        st.warning("未填寫正確血壓資訊。")
+    st.subheader("📄 最近五筆紀錄")
+    st.dataframe(df.tail(5))

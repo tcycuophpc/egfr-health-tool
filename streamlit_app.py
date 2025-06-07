@@ -93,7 +93,6 @@ bp = col1.text_input("血壓 (如 120/80)")
 bmi = round(weight / ((height/100)**2), 1)
 
 sleep_hours = col2.slider("平均睡眠時數 (小時)", 0, 15, 7)
-total_chol = col2.number_input("總膽固醇 (mg/dL)", min_value=50, max_value=300, value=180)
 body_fat = col2.slider("體脂率 (%)", 5, 50, 25)
 egfr = col2.number_input("eGFR (mL/min/1.73㎡)", min_value=0.0, max_value=150.0, value=85.0)
 
@@ -121,7 +120,6 @@ if st.button("提交並儲存記錄"):
         "bmi": bmi,
         "bp": bp,
         "sleep": sleep_hours,
-        "chol": total_chol,
         "body_fat": body_fat,
         "egfr": egfr,
         "frail": frail_score,
@@ -145,3 +143,22 @@ if st.button("提交並儲存記錄"):
     plt.tight_layout()
     plt.savefig(chart_path)
     st.image(chart_path)
+
+    st.subheader("健康建議")
+    if egfr >= 90:
+        st.success("eGFR 正常，建議每年定期追蹤腎功能並維持良好生活習慣。")
+    elif 60 <= egfr < 90:
+        st.warning("eGFR 有輕度下降，建議增加水分攝取並避免高鹽高蛋白飲食。")
+    elif 30 <= egfr < 60:
+        st.error("eGFR 明顯下降，建議盡快轉診腎臟科門診評估。")
+        st.markdown("👉 [預約腎臟科門診](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
+    else:
+        st.error("eGFR 嚴重下降，請立即就醫處理。")
+        st.markdown("🚨 [緊急掛號 - 腎臟專科](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
+
+    if bmi >= 27:
+        st.warning("您的 BMI 顯示體重過重，建議控制體重以降低高血壓、糖尿病與腎病風險。")
+        st.markdown("👉 [預約體重控制門診](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
+    elif bmi < 18.5:
+        st.info("您的 BMI 偏低，建議檢視營養攝取並尋求醫師建議。")
+        st.markdown("👉 [預約營養門診](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")

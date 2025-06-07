@@ -44,6 +44,21 @@ def frailty_level(score):
 def is_int_or_half(num):
     return (num * 2) == int(num * 2)
 
+# 新增 eGFR 分級與衰弱風險判斷
+def egfr_standard_level(egfr):
+    if egfr >= 90:
+        return "正常腎功能", "無明顯腎功能衰弱風險"
+    elif 60 <= egfr < 90:
+        return "輕度腎功能下降", "需注意腎功能，適度調整生活習慣"
+    elif 45 <= egfr < 60:
+        return "中度腎功能下降", "有中度腎功能衰弱風險，建議定期追蹤與治療"
+    elif 30 <= egfr < 45:
+        return "中重度腎功能下降", "腎功能明顯衰弱，請積極就醫與監測"
+    elif 15 <= egfr < 30:
+        return "重度腎功能下降", "嚴重腎功能衰弱，需專科治療"
+    else:
+        return "腎功能衰竭", "腎功能極度衰弱，需緊急醫療處理"
+
 def main():
     st.set_page_config(page_title="整合性健康評估工具", page_icon="🩺")
     st.title("🩺 健康評估、生活習慣分析與衰弱預測")
@@ -111,8 +126,13 @@ def main():
             int(sleep_hours < 5 or sleep_hours > 10)
         )
 
+        # 新增 eGFR 分級與說明
+        egfr_level, egfr_advice = egfr_standard_level(egfr)
+
         st.header("📊 分析結果")
         st.metric("eGFR (ml/min/1.73m²)", f"{egfr:.1f}")
+        st.write(f"**eGFR 腎功能等級**: {egfr_level}")
+        st.info(f"腎功能狀態建議: {egfr_advice}")
         st.metric("BMI (kg/m²)", f"{bmi:.1f}")
         st.metric("衰弱評估", f"{frail_status}（分數：{score}）")
         st.metric("生活習慣風險分數", f"{lifestyle_risk_score} / 6")

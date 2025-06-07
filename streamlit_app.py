@@ -15,7 +15,7 @@ CHART_DIR = "charts"
 os.makedirs(CHART_DIR, exist_ok=True)
 
 # 顯示護理系圖檔
-st.image("img.png", caption="中國醫藥大學護理學系 (School of Nursing, CMU)", use_container_width=True)
+st.image("護理系圖檔.png", caption="中國醫藥大學護理學系 (School of Nursing, CMU)", use_container_width=True)
 
 # 載入與儲存使用者資料的函數
 def load_user_data():

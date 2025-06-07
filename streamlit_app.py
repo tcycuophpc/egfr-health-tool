@@ -99,7 +99,6 @@ bp = col1.text_input("血壓 (如 120/80)")
 bmi = round(weight / ((height/100)**2), 1)
 
 sleep_hours = col2.slider("平均睡眠時數 (小時)", 0, 15, 7)
-body_fat = col2.slider("體脂率 (%)", 5, 50, 25)
 egfr = col2.number_input("eGFR (mL/min/1.73㎡)", min_value=0.0, max_value=150.0, value=85.0)
 
 st.subheader("簡易衰弱測驗")
@@ -126,7 +125,6 @@ if st.button("提交並儲存記錄"):
         "bmi": bmi,
         "bp": bp,
         "sleep": sleep_hours,
-        "body_fat": body_fat,
         "egfr": egfr,
         "frail": frail_score,
         "drinking": drinking,
@@ -143,7 +141,7 @@ if st.button("提交並儲存記錄"):
     df = pd.DataFrame(user_data[user_id]["records"])
     chart_path = os.path.join(CHART_DIR, f"{user_id}_chart.png")
     fig, ax = plt.subplots()
-    df.tail(5).plot(x="date", y=["egfr", "bmi", "sleep", "body_fat"], ax=ax, marker="o")
+    df.tail(5).plot(x="date", y=["egfr", "bmi", "sleep"], ax=ax, marker="o")
     plt.title("健康指標趨勢圖（近五筆資料）")
     plt.xticks(rotation=45)
     plt.tight_layout()
@@ -163,9 +161,23 @@ if st.button("提交並儲存記錄"):
         st.markdown("🚨 [緊急掛號 - 腎臟專科](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
 
     if frail_score >= 3:
-        st.error("衰弱風險高，建議定期運動、增加蛋白質攝取，並諮詢老年醫學科醫師。")
+        st.error(f"衰弱評分：{frail_score}，屬於高度衰弱風險，建議定期運動、增加蛋白質攝取，並諮詢老年醫學科醫師。")
         st.markdown("👉 [老年醫學門診](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=30500A&flag=first)")
     elif frail_score in [1, 2]:
-        st.warning("有前衰弱風險，建議多活動、保持營養均衡。")
+        st.warning(f"衰弱評分：{frail_score}，有前衰弱風險，建議多活動、保持營養均衡。")
     else:
-        st.info("您目前無衰弱風險，請持續保持良好生活習慣。")
+        st.info(f"衰弱評分：{frail_score}，無衰弱風險，請持續保持良好生活習慣。")
+
+    if "/" in bp:
+        try:
+            sbp, dbp = map(int, bp.split("/"))
+            if sbp >= 140 or dbp >= 90:
+                st.warning("血壓偏高，建議減少鹽分攝取、規律運動並監測血壓。")
+            elif sbp <= 90 or dbp <= 60:
+                st.warning("血壓偏低，若有頭暈虛弱建議就醫評估是否低血壓。")
+            else:
+                st.info("血壓在正常範圍，請持續保持。")
+        except:
+            st.error("血壓格式錯誤，請輸入如 120/80 的格式。")
+    else:
+        st.warning("未填寫正確血壓資訊。")

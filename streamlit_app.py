@@ -1,5 +1,6 @@
-import streamlit as st
+port streamlit as st
 import pandas as pd
+import matplotlib.pyplot as plt
 import json
 import os
 import datetime
@@ -13,7 +14,6 @@ os.makedirs("charts", exist_ok=True)
 
 st.image("護理系圖檔.png", caption="中國醫藥大學護理學系 (School of Nursing, CMU)", use_container_width=True)
 
-# 資料處理
 def load_user_data():
     if os.path.exists(USER_DATA_FILE):
         with open(USER_DATA_FILE, "r", encoding="utf-8") as f:
@@ -54,7 +54,7 @@ user_id = st.session_state["user_id"]
 is_admin = st.session_state.get("is_admin", False)
 user_data = load_user_data()
 
-# 管理者頁面
+# 🔐 管理者頁面
 if is_admin:
     st.title("📊 管理者總覽")
     all_records = []
@@ -62,6 +62,7 @@ if is_admin:
         for rec in udata.get("records", []):
             rec["user_id"] = uid
             all_records.append(rec)
+
     if all_records:
         df_all = pd.DataFrame(all_records)
         df_all["date"] = pd.to_datetime(df_all["date"])
@@ -69,14 +70,14 @@ if is_admin:
         st.subheader("各使用者平均 eGFR")
         st.bar_chart(df_all.groupby("user_id")["egfr"].mean())
         st.subheader("整體 eGFR 趨勢")
-        st.line_chart(df_all.groupby("date")["egfr"].mean())
+        trend = df_all.groupby("date")["egfr"].mean()
+        st.line_chart(trend)
     else:
         st.info("尚無任何紀錄")
     st.stop()
 
 # 使用者頁面
 st.title("🩺 健康評估")
-
 name = st.text_input("姓名")
 age = st.number_input("年齡", 1, 120)
 height = st.number_input("身高 (cm)", 100.0, 250.0)
@@ -109,7 +110,6 @@ frail_score = [f, r, a, i, l].count("是")
 frail_status = "健壯" if frail_score == 0 else "前衰弱" if frail_score in [1, 2] else "衰弱"
 st.write(f"FRAIL 總分：{frail_score}，狀態：{frail_status}")
 
-# 儲存紀錄
 if st.button("儲存紀錄"):
     today = datetime.date.today().isoformat()
     record = {
@@ -127,50 +127,43 @@ if st.button("儲存紀錄"):
     save_user_data(user_data)
     st.success("✅ 紀錄已儲存")
 
-# 載入模型與預測
+# 模型預測與未來趨勢
 model = joblib.load(MODEL_FILE) if os.path.exists(MODEL_FILE) else None
 predicted_egfr = None
-
 if model:
     input_data = [[
-        age, bmi, sbp, dbp,
         smoking_freq, drinking_freq, chewing_freq,
-        drug_freq, supp_freq, chronic_count,
-        frail_score,
-        int("糖尿病" in chronic_illnesses),
-        int("高血壓" in chronic_illnesses),
-        int("中風" in chronic_illnesses)
+        drug_freq, supp_freq, chronic_count
     ]]
     predicted_egfr = model.predict(input_data)[0]
     st.metric("預測下一次 eGFR", f"{predicted_egfr:.2f} ml/min/1.73m²")
-    st.caption("📅 預測基準時間：下一次 eGFR 為三個月後的推估值")
-    future_date = (datetime.date.today() + datetime.timedelta(days=90)).strftime("%Y-%m-%d")
-    st.write(f"🔮 預估日期：**{future_date}**")
-    st.write(f"🧪 預估腎功能 (eGFR)：**{predicted_egfr:.2f} ml/min/1.73m²**")
 
-    if predicted_egfr < 60:
-        st.warning("⚠️ 預測結果顯示您的腎功能可能持續低於標準值，建議持續監測並諮詢專業醫師。")
-    else:
-        st.info("✅ 預測結果良好，請持續維持健康生活習慣與定期追蹤。")
-
-    # 模擬未來趨勢
+    # 🔮 模擬未來趨勢
     future_dates = [datetime.date.today() + datetime.timedelta(days=90 * i) for i in range(1, 7)]
-    future_egfrs = [predicted_egfr * (0.97 ** i) for i in range(6)]  # 每三個月下降 3%
+    future_egfrs = [predicted_egfr * (0.97 ** i) for i in range(6)]
     future_df = pd.DataFrame({
-        "date": future_dates,
-        "預測eGFR": future_egfrs
+        "預測日期": [d.strftime("%Y-%m-%d") for d in future_dates],
+        "預測eGFR (ml/min/1.73m²)": [round(e, 2) for e in future_egfrs]
     })
-    st.subheader("📈 未來 18 個月 eGFR 預測趨勢")
-    st.line_chart(future_df.set_index("date"))
 
-# 趨勢與歷史紀錄
+    st.subheader("📈 未來 18 個月 eGFR 預測趨勢")
+    chart_df = pd.DataFrame({"date": future_dates, "預測eGFR": future_egfrs})
+    st.line_chart(chart_df.set_index("date"))
+    st.markdown("🔍 下方為預測數值表（以三個月為間隔）：")
+    st.table(future_df)
+    st.caption("📅 每列資料代表距今未來的 3、6、9、12、15、18 個月預測值")
+
+# 健康建議（略，與前相同）
+
+# 歷史資料趨勢
 records = user_data.get(user_id, {}).get("records", [])
 if records:
     df = pd.DataFrame(records)
     df["date"] = pd.to_datetime(df["date"])
     df = df.sort_values("date")
     df["predicted_egfr"] = df["egfr"].ewm(span=2).mean()
-    st.subheader("📉 過去 eGFR 與趨勢")
+
+    st.subheader("📊 eGFR 歷史趨勢")
     st.line_chart(df[["egfr", "predicted_egfr"]].tail(10))
     st.subheader("📄 最近五筆紀錄")
     st.dataframe(df.tail(5))

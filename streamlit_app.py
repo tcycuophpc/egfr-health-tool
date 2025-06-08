@@ -9,12 +9,11 @@ import joblib
 
 USER_DATA_FILE = "user_data.json"
 MODEL_FILE = "egfr_model.pkl"
+ADMIN_ACCOUNTS = ["12345678"]  # ✅ 你可以在這裡加入多組管理者 ID
 os.makedirs("charts", exist_ok=True)
 
-# 顯示圖片
 st.image("護理系圖檔.png", caption="中國醫藥大學護理學系 (School of Nursing, CMU)", use_container_width=True)
 
-# 資料載入與儲存
 def load_user_data():
     if os.path.exists(USER_DATA_FILE):
         with open(USER_DATA_FILE, "r", encoding="utf-8") as f:
@@ -25,7 +24,6 @@ def save_user_data(data):
     with open(USER_DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
-# 登入介面
 def user_login():
     st.title("健康評估登入系統")
     id_last4 = st.text_input("身分證後四碼")
@@ -34,7 +32,7 @@ def user_login():
         if len(id_last4) == 4 and len(birth4) == 4:
             user_id = id_last4 + birth4
             user_data = load_user_data()
-            if user_id == "12345678":
+            if user_id in ADMIN_ACCOUNTS:
                 st.session_state["user_id"] = user_id
                 st.session_state["is_admin"] = True
                 st.success("管理者登入成功")
@@ -48,15 +46,39 @@ def user_login():
         else:
             st.warning("請正確輸入共 8 碼")
 
-# 檢查登入狀態
 if "user_id" not in st.session_state:
     user_login()
     st.stop()
 
 user_id = st.session_state["user_id"]
+is_admin = st.session_state.get("is_admin", False)
 user_data = load_user_data()
 
-# 基本資訊輸入
+# 🔐 管理者頁面（可擴充）
+if is_admin:
+    st.title("📊 管理者總覽")
+    all_records = []
+    for uid, udata in user_data.items():
+        for rec in udata.get("records", []):
+            rec["user_id"] = uid
+            all_records.append(rec)
+
+    if all_records:
+        df_all = pd.DataFrame(all_records)
+        df_all["date"] = pd.to_datetime(df_all["date"])
+        st.dataframe(df_all.sort_values("date", ascending=False))
+
+        st.subheader("各使用者平均 eGFR")
+        st.bar_chart(df_all.groupby("user_id")["egfr"].mean())
+
+        st.subheader("整體 eGFR 趨勢")
+        trend = df_all.groupby("date")["egfr"].mean()
+        st.line_chart(trend)
+    else:
+        st.info("尚無任何紀錄")
+    st.stop()
+
+# 使用者頁面
 st.title("🩺 健康評估")
 
 name = st.text_input("姓名")
@@ -70,7 +92,6 @@ sbp = st.slider("收縮壓 SBP", 80, 200)
 dbp = st.slider("舒張壓 DBP", 40, 130)
 egfr = st.number_input("eGFR(ml/min/1.73m²)", 1.0, 120.0)
 
-# 生活習慣
 st.subheader("生活習慣（次數輸入）")
 smoking_freq = st.slider("每日抽菸支數", 0, 40)
 drinking_freq = st.slider("每週飲酒次數", 0, 14)
@@ -78,12 +99,10 @@ chewing_freq = st.slider("每日嚼檳榔次數", 0, 20)
 drug_freq = st.slider("每月藥物濫用次數", 0, 30)
 supp_freq = st.slider("每日保健品使用次數", 0, 10)
 
-# 慢性病史
 st.subheader("慢性病史")
 chronic_illnesses = st.multiselect("請勾選曾罹患的慢性病", ["糖尿病", "高血壓", "中風", "其他"])
 chronic_count = len(chronic_illnesses)
 
-# FRAIL 指標
 st.subheader("FRAIL 衰弱指標")
 f = st.radio("Fatigue 疲憊感", ["是", "否"])
 r = st.radio("Resistance 肌力減弱", ["是", "否"])
@@ -94,7 +113,6 @@ frail_score = [f, r, a, i, l].count("是")
 frail_status = "健壯" if frail_score == 0 else "前衰弱" if frail_score in [1, 2] else "衰弱"
 st.write(f"FRAIL 總分：{frail_score}，狀態：{frail_status}")
 
-# 儲存紀錄
 if st.button("儲存紀錄"):
     today = datetime.date.today().isoformat()
     record = {
@@ -116,7 +134,7 @@ if st.button("儲存紀錄"):
     save_user_data(user_data)
     st.success("✅ 紀錄已儲存")
 
-# 模型預測
+# 載入模型並預測
 model = joblib.load(MODEL_FILE) if os.path.exists(MODEL_FILE) else None
 predicted_egfr = None
 if model:
@@ -177,7 +195,6 @@ if frail_score > 2:
 - 建議掛號 [復健科](https://www.cmuh.cmu.edu.tw/OnlineAppointment/DymSchedule?table=31700A&flag=first)
 """)
 
-# 趨勢圖與歷史資料
 records = user_data.get(user_id, {}).get("records", [])
 if records:
     df = pd.DataFrame(records)

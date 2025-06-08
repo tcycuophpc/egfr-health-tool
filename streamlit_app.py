@@ -34,12 +34,12 @@ def user_login():
     if st.button("登入"):
         if len(id_last4) == 4 and len(birth4) == 4:
             user_id = id_last4 + birth4
+            user_data = load_user_data()
             if user_id == "12345678":
                 st.session_state["user_id"] = user_id
                 st.session_state["is_admin"] = True
                 st.success("管理者登入成功")
             else:
-                user_data = load_user_data()
                 if user_id not in user_data:
                     user_data[user_id] = {"records": []}
                     save_user_data(user_data)
@@ -96,7 +96,7 @@ frail_score = [f, r, a, i, l].count("是")
 frail_status = "健壯" if frail_score == 0 else "前衰弱" if frail_score in [1, 2] else "衰弱"
 st.write(f"FRAIL 總分：{frail_score}，狀態：{frail_status}")
 
-# 儲存紀錄
+# 儲存紀錄（防呆處理）
 if st.button("儲存紀錄"):
     today = datetime.date.today().isoformat()
     record = {
@@ -107,9 +107,14 @@ if st.button("儲存紀錄"):
         "supp_freq": supp_freq, "chronic_count": chronic_count,
         "chronic_illnesses": chronic_illnesses
     }
-    records = user_data[user_id].get("records", [])
-    records.append(record)
-    user_data[user_id]["records"] = records[-10:]
+
+    if user_id not in user_data:
+        user_data[user_id] = {"records": []}
+    if "records" not in user_data[user_id]:
+        user_data[user_id]["records"] = []
+
+    user_data[user_id]["records"].append(record)
+    user_data[user_id]["records"] = user_data[user_id]["records"][-10:]
     save_user_data(user_data)
     st.success("✅ 紀錄已儲存")
 
@@ -175,7 +180,7 @@ if frail_score > 2:
     """)
 
 # 趨勢與歷史紀錄
-records = user_data[user_id].get("records", [])
+records = user_data.get(user_id, {}).get("records", [])
 if records:
     df = pd.DataFrame(records)
     df["date"] = pd.to_datetime(df["date"])
